@@ -12,41 +12,130 @@
   let selectedDiagnosticIds = [];
   let eventsConfigured = false;
 
-  var FUEL_KEYWORDS = [
-    "fuel",
-    "combustible",
-    "gas",
-    "diesel",
-    "tank",
-    "level",
-    "used",
-    "consumption",
-    "economy",
-    "rate",
-    "idle fuel",
-    "fuel used",
-    "fuel level",
-    "total fuel",
-    "fuel economy"
+  var ALLOWED_FUEL_DIAGNOSTIC_RULES = [
+    {
+      label: "Mid trip fuel data points valid",
+      all: ["mid", "trip", "fuel", "data", "point", "valid"],
+      variants: [
+        "los puntos de datos de combustible a mitad de viaje son validos",
+        "puntos de datos de combustible a mitad de viaje validos"
+      ]
+    },
+    {
+      label: "Fuel level percentage",
+      anyAll: [
+        ["fuel", "level", "percentage"],
+        ["fuel", "level", "percent"],
+        ["fuel", "level"],
+        ["nivel", "combustible", "porcentaje"]
+      ]
+    },
+    {
+      label: "Trip distance with tracked fuel accumulator",
+      anyAll: [
+        ["trip", "distance", "fuel", "accumulator", "tracked"],
+        ["distancia", "viaje", "acumulador", "combustible"],
+        ["distancia", "viaje", "combustible", "orugas"]
+      ]
+    },
+    {
+      label: "Trip distance with tracked fuel",
+      anyAll: [
+        ["trip", "distance", "fuel", "tracked"],
+        ["distancia", "viaje", "combustible", "rastreada"],
+        ["distancia", "viaje", "combustible", "orugas"]
+      ]
+    },
+    {
+      label: "Trip distance with tracked fuel source",
+      anyAll: [
+        ["trip", "distance", "fuel", "source", "tracked"],
+        ["distancia", "viaje", "fuente", "combustible", "rastreada"],
+        ["distancia", "viaje", "fuente", "combustible", "rastread"]
+      ]
+    },
+    {
+      label: "Trip idle fuel used",
+      anyAll: [
+        ["trip", "idle", "fuel", "used"],
+        ["combustible", "ralenti", "viaje", "utilizado"],
+        ["combustible", "ralenti", "viaje", "usado"]
+      ]
+    },
+    {
+      label: "Trip fuel used",
+      anyAll: [
+        ["trip", "fuel", "used"],
+        ["combustible", "viaje", "utilizado"],
+        ["combustible", "viaje", "usado"]
+      ]
+    },
+    {
+      label: "Total fuel used since telematics device installation",
+      anyAll: [
+        ["total", "fuel", "used"],
+        ["fuel", "used", "installation"],
+        ["combustible", "total", "utilizado", "instalacion"],
+        ["combustible", "total", "usado", "instalacion"]
+      ]
+    },
+    {
+      label: "Total idle fuel used since telematics device installation",
+      anyAll: [
+        ["total", "idle", "fuel", "used"],
+        ["idle", "fuel", "used", "installation"],
+        ["combustible", "total", "ralenti", "utilizado"],
+        ["combustible", "total", "ralenti", "usado"]
+      ]
+    },
+    {
+      label: "Trip idle fuel used accumulation",
+      anyAll: [
+        ["trip", "idle", "fuel", "used", "accumulation"],
+        ["idle", "fuel", "accumulation", "trip"],
+        ["acumulacion", "combustible", "ralenti", "viaje"],
+        ["acumulacion", "combustible", "usado", "ralenti", "viaje"]
+      ]
+    },
+    {
+      label: "Trip fuel accumulator",
+      anyAll: [
+        ["trip", "fuel", "accumulator"],
+        ["acumulador", "combustible", "viaje"]
+      ]
+    }
   ];
 
-  var AMBIGUOUS_FUEL_EXCLUSIONS = [
+  var FUEL_DIAGNOSTIC_EXCLUSIONS = [
     "exhaust",
+    "escape",
+    "gases de escape",
     "emission",
     "emissions",
+    "emisiones",
     "aftertreatment",
     "nox",
     "oxygen",
+    "oxigeno",
     "o2",
     "egr",
+    "scr",
     "def",
     "diesel exhaust fluid",
     "urea",
     "adblue",
+    "sensor de gas",
+    "sensores de gases",
+    "gas pressure",
+    "presion de gas",
+    "gas temperature",
+    "temperatura de gas",
     "cng",
     "lng",
     "propane",
+    "propano",
     "natural gas",
+    "gas natural",
     "lpg"
   ];
 
@@ -158,7 +247,13 @@
   }
 
   function normalizeText(value) {
-    return String(value || "").toLowerCase();
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9%]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function getDeviceLabel(device) {
@@ -189,25 +284,51 @@
   }
 
   function getDiagnosticSearchText(diagnostic) {
-    return [
+    return normalizeText([
       diagnostic.name,
       diagnostic.code,
       diagnostic.source && diagnostic.source.name,
       diagnostic.diagnosticType,
       diagnostic.unitOfMeasure && diagnostic.unitOfMeasure.name
-    ].filter(Boolean).join(" ").toLowerCase();
+    ].filter(Boolean).join(" "));
+  }
+
+  function textContainsAll(text, words) {
+    return words.every(function (word) {
+      return text.indexOf(normalizeText(word)) !== -1;
+    });
+  }
+
+  function matchesAllowedFuelRule(text, rule) {
+    if (rule.all && textContainsAll(text, rule.all)) {
+      return true;
+    }
+
+    if (rule.variants && rule.variants.some(function (variant) {
+      return text.indexOf(normalizeText(variant)) !== -1;
+    })) {
+      return true;
+    }
+
+    if (rule.anyAll && rule.anyAll.some(function (words) {
+      return textContainsAll(text, words);
+    })) {
+      return true;
+    }
+
+    return false;
   }
 
   function isFuelDiagnostic(diagnostic) {
     var text = getDiagnosticSearchText(diagnostic || {});
-    var hasFuelKeyword = FUEL_KEYWORDS.some(function (keyword) {
-      return text.indexOf(keyword.toLowerCase()) !== -1;
+    var hasExcludedTerm = FUEL_DIAGNOSTIC_EXCLUSIONS.some(function (keyword) {
+      return text.indexOf(normalizeText(keyword)) !== -1;
     });
-    var hasAmbiguousGasTerm = AMBIGUOUS_FUEL_EXCLUSIONS.some(function (keyword) {
-      return text.indexOf(keyword.toLowerCase()) !== -1;
+    var isWhitelisted = ALLOWED_FUEL_DIAGNOSTIC_RULES.some(function (rule) {
+      return matchesAllowedFuelRule(text, rule);
     });
 
-    return hasFuelKeyword && !hasAmbiguousGasTerm;
+    return isWhitelisted && !hasExcludedTerm;
   }
 
   function getSelectedDevices() {
