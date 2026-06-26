@@ -4,11 +4,11 @@
   var root = window.geotab = window.geotab || {};
   root.addin = root.addin || {};
 
-  var apiRef = null;
-  var stateRef = null;
-  var devicesCache = [];
-  var diagnosticsCache = [];
-  var eventsConfigured = false;
+  let apiRef = null;
+  let stateRef = null;
+  let devicesCache = [];
+  let diagnosticsCache = [];
+  let eventsConfigured = false;
 
   var FUEL_KEYWORDS = [
     "fuel",
@@ -113,7 +113,7 @@
         return;
       }
 
-      console.log("[Panel Combustible] api.call:", method, params);
+      console.log("[Panel Combustible] api.call request:", method, params);
 
       apiRef.call(
         method,
@@ -205,17 +205,13 @@
 
     devices = await apiCall("Get", {
       typeName: "Device",
-      resultsLimit: 1000,
-      sort: {
-        sortBy: "name",
-        sortDirection: "asc"
-      }
+      resultsLimit: 1000
     });
 
     devicesCache = Array.isArray(devices) ? devices : [];
 
     console.log("[Panel Combustible] Vehiculos cargados:", devicesCache.length);
-    console.table(devicesCache.slice(0, 10));
+    console.table(devicesCache.slice(0, 20));
 
     select.innerHTML = "";
 
@@ -262,7 +258,7 @@
 
     diagnosticsCache = allDiagnostics.filter(isFuelDiagnostic);
 
-    console.log("[Panel Combustible] Diagnosticos combustible:", diagnosticsCache.length);
+    console.log("[Panel Combustible] Diagnosticos de combustible:", diagnosticsCache.length);
     console.table(diagnosticsCache.slice(0, 20));
 
     select.innerHTML = "";
@@ -335,14 +331,10 @@
         fromDate: fromDate.toISOString(),
         toDate: toDate.toISOString()
       },
-      resultsLimit: 5000,
-      sort: {
-        sortBy: "dateTime",
-        sortDirection: "desc"
-      }
+      resultsLimit: 5000
     };
 
-    console.log("[Panel Combustible] Consultando StatusData con parametros:", params);
+    console.log("[Panel Combustible] Consultando StatusData:", params);
 
     rows = await apiCall("Get", params);
 

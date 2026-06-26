@@ -26,7 +26,7 @@ https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html
 El `configuration.json` usa la URL con versión:
 
 ```text
-https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html?v=1.0.2
+https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html?v=1.0.3
 ```
 
 ## Activar GitHub Pages

@@ -1,11 +1,11 @@
 {
   "name": "Panel Combustible",
   "supportEmail": "soporte@tuempresa.com",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "enableViewSecurityId": false,
   "items": [
     {
-      "url": "https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html?v=1.0.2",
+      "url": "https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html?v=1.0.3",
       "path": "EngineMaintenanceLink/",
       "menuName": {
         "en": "Fuel Dashboard",
