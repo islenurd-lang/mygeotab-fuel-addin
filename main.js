@@ -8,6 +8,8 @@
   let stateRef = null;
   let devicesCache = [];
   let diagnosticsCache = [];
+  let selectedDeviceIds = [];
+  let selectedDiagnosticIds = [];
   let eventsConfigured = false;
 
   var FUEL_KEYWORDS = [
@@ -26,6 +28,26 @@
     "fuel level",
     "total fuel",
     "fuel economy"
+  ];
+
+  var AMBIGUOUS_FUEL_EXCLUSIONS = [
+    "exhaust",
+    "emission",
+    "emissions",
+    "aftertreatment",
+    "nox",
+    "oxygen",
+    "o2",
+    "egr",
+    "def",
+    "diesel exhaust fluid",
+    "urea",
+    "adblue",
+    "cng",
+    "lng",
+    "propane",
+    "natural gas",
+    "lpg"
   ];
 
   function getElement(id) {
@@ -99,13 +121,6 @@
     }
   }
 
-  function addOption(select, value, label) {
-    var option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    select.appendChild(option);
-  }
-
   function apiCall(method, params) {
     return new Promise(function (resolve, reject) {
       if (!apiRef || typeof apiRef.call !== "function") {
@@ -142,26 +157,20 @@
     return true;
   }
 
+  function normalizeText(value) {
+    return String(value || "").toLowerCase();
+  }
+
   function getDeviceLabel(device) {
     return device.name || device.serialNumber || device.id || "Vehiculo sin identificar";
   }
 
-  function getSelectedDevice() {
-    var select = getElement("deviceSelect");
-    var deviceId = select ? select.value : "";
-
-    return devicesCache.find(function (device) {
-      return device.id === deviceId;
-    });
-  }
-
-  function getSelectedDiagnostic() {
-    var select = getElement("diagnosticSelect");
-    var diagnosticId = select ? select.value : "";
-
-    return diagnosticsCache.find(function (diagnostic) {
-      return diagnostic.id === diagnosticId;
-    });
+  function getDeviceSearchText(device) {
+    return [
+      device.name,
+      device.serialNumber,
+      device.id
+    ].filter(Boolean).join(" ").toLowerCase();
   }
 
   function getDiagnosticUnitName(diagnostic) {
@@ -172,36 +181,226 @@
     return "";
   }
 
-  function isFuelDiagnostic(diagnostic) {
-    var text = [
+  function getDiagnosticLabel(diagnostic) {
+    var unit = getDiagnosticUnitName(diagnostic);
+    var label = diagnostic.name || diagnostic.code || diagnostic.id;
+
+    return unit ? label + " (" + unit + ")" : label;
+  }
+
+  function getDiagnosticSearchText(diagnostic) {
+    return [
       diagnostic.name,
       diagnostic.code,
       diagnostic.source && diagnostic.source.name,
       diagnostic.diagnosticType,
       diagnostic.unitOfMeasure && diagnostic.unitOfMeasure.name
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
 
-    return FUEL_KEYWORDS.some(function (keyword) {
+  function isFuelDiagnostic(diagnostic) {
+    var text = getDiagnosticSearchText(diagnostic || {});
+    var hasFuelKeyword = FUEL_KEYWORDS.some(function (keyword) {
       return text.indexOf(keyword.toLowerCase()) !== -1;
+    });
+    var hasAmbiguousGasTerm = AMBIGUOUS_FUEL_EXCLUSIONS.some(function (keyword) {
+      return text.indexOf(keyword.toLowerCase()) !== -1;
+    });
+
+    return hasFuelKeyword && !hasAmbiguousGasTerm;
+  }
+
+  function getSelectedDevices() {
+    return selectedDeviceIds.map(function (id) {
+      return devicesCache.find(function (device) {
+        return device.id === id;
+      });
+    }).filter(Boolean);
+  }
+
+  function getSelectedDiagnostics() {
+    return selectedDiagnosticIds.map(function (id) {
+      return diagnosticsCache.find(function (diagnostic) {
+        return diagnostic.id === id;
+      });
+    }).filter(Boolean);
+  }
+
+  function createOptionButton(label, isSelected, onClick) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = isSelected ? "multi-select-option is-selected" : "multi-select-option";
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function renderTags(containerId, items, removeHandler) {
+    var container = getElement(containerId);
+
+    if (!container) {
+      return;
+    }
+
+    container.innerHTML = "";
+
+    if (items.length === 0) {
+      var empty = document.createElement("span");
+      empty.className = "selected-tags-empty";
+      empty.textContent = "Sin seleccion.";
+      container.appendChild(empty);
+      return;
+    }
+
+    items.forEach(function (item) {
+      var tag = document.createElement("span");
+      var removeButton = document.createElement("button");
+      tag.className = "selected-tag";
+      tag.appendChild(document.createTextNode(item.label));
+      removeButton.type = "button";
+      removeButton.textContent = "x";
+      removeButton.setAttribute("aria-label", "Quitar " + item.label);
+      removeButton.addEventListener("click", function () {
+        removeHandler(item.id);
+      });
+      tag.appendChild(removeButton);
+      container.appendChild(tag);
     });
   }
 
+  function renderVehicleOptions() {
+    var options = getElement("vehicleOptions");
+    var input = getElement("vehicleSearchInput");
+    var query = normalizeText(input && input.value);
+    var matches = devicesCache.filter(function (device) {
+      return !query || getDeviceSearchText(device).indexOf(query) !== -1;
+    }).slice(0, 100);
+
+    if (!options) {
+      return;
+    }
+
+    options.innerHTML = "";
+
+    if (devicesCache.length === 0) {
+      options.textContent = "No hay vehiculos disponibles.";
+      return;
+    }
+
+    if (matches.length === 0) {
+      options.textContent = "No hay coincidencias.";
+      return;
+    }
+
+    matches.forEach(function (device) {
+      options.appendChild(createOptionButton(
+        getDeviceLabel(device),
+        selectedDeviceIds.indexOf(device.id) !== -1,
+        function () {
+          toggleVehicle(device.id);
+        }
+      ));
+    });
+  }
+
+  function renderDiagnosticOptions() {
+    var options = getElement("diagnosticOptions");
+    var input = getElement("diagnosticSearchInput");
+    var query = normalizeText(input && input.value);
+    var matches = diagnosticsCache.filter(function (diagnostic) {
+      return !query || getDiagnosticSearchText(diagnostic).indexOf(query) !== -1;
+    }).slice(0, 100);
+
+    if (!options) {
+      return;
+    }
+
+    options.innerHTML = "";
+
+    if (diagnosticsCache.length === 0) {
+      options.textContent = "No hay diagnosticos de combustible.";
+      return;
+    }
+
+    if (matches.length === 0) {
+      options.textContent = "No hay coincidencias.";
+      return;
+    }
+
+    matches.forEach(function (diagnostic) {
+      options.appendChild(createOptionButton(
+        getDiagnosticLabel(diagnostic),
+        selectedDiagnosticIds.indexOf(diagnostic.id) !== -1,
+        function () {
+          toggleDiagnostic(diagnostic.id);
+        }
+      ));
+    });
+  }
+
+  function renderSelectedVehicles() {
+    renderTags("selectedVehicles", getSelectedDevices().map(function (device) {
+      return { id: device.id, label: getDeviceLabel(device) };
+    }), removeVehicle);
+  }
+
+  function renderSelectedDiagnostics() {
+    renderTags("selectedDiagnostics", getSelectedDiagnostics().map(function (diagnostic) {
+      return { id: diagnostic.id, label: getDiagnosticLabel(diagnostic) };
+    }), removeDiagnostic);
+  }
+
+  function refreshVehicleUi() {
+    renderVehicleOptions();
+    renderSelectedVehicles();
+  }
+
+  function refreshDiagnosticUi() {
+    renderDiagnosticOptions();
+    renderSelectedDiagnostics();
+  }
+
+  function toggleVehicle(deviceId) {
+    if (selectedDeviceIds.indexOf(deviceId) === -1) {
+      selectedDeviceIds.push(deviceId);
+    } else {
+      removeVehicle(deviceId);
+      return;
+    }
+
+    refreshVehicleUi();
+  }
+
+  function toggleDiagnostic(diagnosticId) {
+    if (selectedDiagnosticIds.indexOf(diagnosticId) === -1) {
+      selectedDiagnosticIds.push(diagnosticId);
+    } else {
+      removeDiagnostic(diagnosticId);
+      return;
+    }
+
+    refreshDiagnosticUi();
+  }
+
+  function removeVehicle(deviceId) {
+    selectedDeviceIds = selectedDeviceIds.filter(function (id) {
+      return id !== deviceId;
+    });
+    refreshVehicleUi();
+  }
+
+  function removeDiagnostic(diagnosticId) {
+    selectedDiagnosticIds = selectedDiagnosticIds.filter(function (id) {
+      return id !== diagnosticId;
+    });
+    refreshDiagnosticUi();
+  }
+
   async function loadDevices() {
-    var select = getElement("deviceSelect");
     var devices;
 
     console.log("[Panel Combustible] Cargando vehiculos...");
     setStatusMessage("Cargando vehiculos...");
-
-    if (!select) {
-      throw new Error("No existe el elemento deviceSelect en el HTML.");
-    }
-
-    select.innerHTML = "";
-    addOption(select, "", "Cargando vehiculos...");
 
     devices = await apiCall("Get", {
       typeName: "Device",
@@ -209,42 +408,31 @@
     });
 
     devicesCache = Array.isArray(devices) ? devices : [];
+    selectedDeviceIds = selectedDeviceIds.filter(function (id) {
+      return devicesCache.some(function (device) {
+        return device.id === id;
+      });
+    });
 
     console.log("[Panel Combustible] Vehiculos cargados:", devicesCache.length);
     console.table(devicesCache.slice(0, 20));
 
-    select.innerHTML = "";
-
     if (devicesCache.length === 0) {
-      addOption(select, "", "No hay vehiculos disponibles");
       showError("No se encontraron vehiculos visibles para este usuario. Verifica permisos y grupos en MyGeotab.");
       setStatusMessage("Vehiculos cargados: 0.");
-      return;
+    } else {
+      setStatusMessage("Vehiculos cargados: " + devicesCache.length + ".");
     }
 
-    addOption(select, "", "Seleccione un vehiculo");
-
-    devicesCache.forEach(function (device) {
-      addOption(select, device.id, getDeviceLabel(device));
-    });
-
-    setStatusMessage("Vehiculos cargados: " + devicesCache.length + ".");
+    refreshVehicleUi();
   }
 
   async function loadFuelDiagnostics() {
-    var select = getElement("diagnosticSelect");
     var diagnostics;
     var allDiagnostics;
 
     console.log("[Panel Combustible] Cargando diagnosticos...");
     setStatusMessage("Cargando diagnosticos...");
-
-    if (!select) {
-      throw new Error("No existe el elemento diagnosticSelect en el HTML.");
-    }
-
-    select.innerHTML = "";
-    addOption(select, "", "Cargando diagnosticos...");
 
     diagnostics = await apiCall("Get", {
       typeName: "Diagnostic",
@@ -252,57 +440,35 @@
     });
 
     allDiagnostics = Array.isArray(diagnostics) ? diagnostics : [];
+    diagnosticsCache = allDiagnostics.filter(isFuelDiagnostic);
+    selectedDiagnosticIds = selectedDiagnosticIds.filter(function (id) {
+      return diagnosticsCache.some(function (diagnostic) {
+        return diagnostic.id === id;
+      });
+    });
 
     console.log("[Panel Combustible] Total diagnosticos:", allDiagnostics.length);
-    console.table(allDiagnostics.slice(0, 10));
-
-    diagnosticsCache = allDiagnostics.filter(isFuelDiagnostic);
-
+    console.table(allDiagnostics.slice(0, 20));
     console.log("[Panel Combustible] Diagnosticos de combustible:", diagnosticsCache.length);
     console.table(diagnosticsCache.slice(0, 20));
 
-    select.innerHTML = "";
-
     if (diagnosticsCache.length === 0) {
-      addOption(select, "", "No hay diagnosticos de combustible");
-      showError("No se encontraron diagnosticos relacionados con combustible. Revisa si la base tiene datos de motor disponibles.");
+      showError("No se encontraron diagnosticos relacionados con combustible.");
       setStatusMessage("Diagnosticos de combustible cargados: 0.");
-      return;
+    } else {
+      setStatusMessage("Diagnosticos cargados: " + diagnosticsCache.length + ".");
     }
 
-    addOption(select, "", "Seleccione un diagnostico");
-
-    diagnosticsCache.forEach(function (diagnostic) {
-      var unit = getDiagnosticUnitName(diagnostic);
-      var label = diagnostic.name || diagnostic.id;
-
-      addOption(select, diagnostic.id, unit ? label + " (" + unit + ")" : label);
-    });
-
-    setStatusMessage("Diagnosticos cargados: " + diagnosticsCache.length + ".");
+    refreshDiagnosticUi();
   }
 
-  async function queryFuelStatusData() {
-    var deviceSelect = getElement("deviceSelect");
-    var diagnosticSelect = getElement("diagnosticSelect");
+  function validateDateRange() {
     var fromDateInput = getElement("fromDate");
     var toDateInput = getElement("toDate");
-    var deviceId = deviceSelect ? deviceSelect.value : "";
-    var diagnosticId = diagnosticSelect ? diagnosticSelect.value : "";
     var fromInput = fromDateInput ? fromDateInput.value : "";
     var toInput = toDateInput ? toDateInput.value : "";
     var fromDate;
     var toDate;
-    var params;
-    var rows;
-
-    if (!deviceId) {
-      throw new Error("Debe seleccionar un vehiculo.");
-    }
-
-    if (!diagnosticId) {
-      throw new Error("Debe seleccionar un diagnostico.");
-    }
 
     if (!fromInput || !toInput) {
       throw new Error("Debe seleccionar fecha inicial y fecha final.");
@@ -319,29 +485,66 @@
       throw new Error("La fecha inicial no puede ser mayor que la fecha final.");
     }
 
-    params = {
-      typeName: "StatusData",
-      search: {
-        deviceSearch: {
-          id: deviceId
-        },
-        diagnosticSearch: {
-          id: diagnosticId
-        },
-        fromDate: fromDate.toISOString(),
-        toDate: toDate.toISOString()
-      },
-      resultsLimit: 5000
+    return {
+      fromDate: fromDate.toISOString(),
+      toDate: toDate.toISOString()
     };
+  }
 
-    console.log("[Panel Combustible] Consultando StatusData:", params);
+  async function queryFuelStatusData() {
+    var selectedDevices = getSelectedDevices();
+    var selectedDiagnostics = getSelectedDiagnostics();
+    var range = validateDateRange();
+    var allRows = [];
+    var deviceIndex;
+    var diagnosticIndex;
 
-    rows = await apiCall("Get", params);
+    if (selectedDevices.length === 0) {
+      throw new Error("Debe seleccionar al menos un vehiculo.");
+    }
 
-    console.log("[Panel Combustible] Registros StatusData:", Array.isArray(rows) ? rows.length : 0);
-    console.table((Array.isArray(rows) ? rows : []).slice(0, 20));
+    if (selectedDiagnostics.length === 0) {
+      throw new Error("Debe seleccionar al menos un diagnostico.");
+    }
 
-    return Array.isArray(rows) ? rows : [];
+    for (deviceIndex = 0; deviceIndex < selectedDevices.length; deviceIndex += 1) {
+      for (diagnosticIndex = 0; diagnosticIndex < selectedDiagnostics.length; diagnosticIndex += 1) {
+        var device = selectedDevices[deviceIndex];
+        var diagnostic = selectedDiagnostics[diagnosticIndex];
+        var params = {
+          typeName: "StatusData",
+          search: {
+            deviceSearch: {
+              id: device.id
+            },
+            diagnosticSearch: {
+              id: diagnostic.id
+            },
+            fromDate: range.fromDate,
+            toDate: range.toDate
+          },
+          resultsLimit: 5000
+        };
+        var rows;
+
+        console.log("[Panel Combustible] Consultando StatusData:", params);
+        rows = await apiCall("Get", params);
+        rows = Array.isArray(rows) ? rows : [];
+
+        console.log("[Panel Combustible] Registros StatusData:", rows.length);
+        console.table(rows.slice(0, 20));
+
+        rows.forEach(function (row) {
+          allRows.push({
+            raw: row,
+            device: device,
+            diagnostic: diagnostic
+          });
+        });
+      }
+    }
+
+    return allRows;
   }
 
   function appendCell(row, value) {
@@ -352,14 +555,9 @@
 
   function renderRows(rows) {
     var tbody = getElement("resultBody");
-    var selectedDevice = getSelectedDevice();
-    var selectedDiagnostic = getSelectedDiagnostic();
-    var selectedDeviceName = selectedDevice ? getDeviceLabel(selectedDevice) : "";
-    var selectedDiagnosticName = selectedDiagnostic ? selectedDiagnostic.name || selectedDiagnostic.id : "";
-    var unit = getDiagnosticUnitName(selectedDiagnostic);
 
     if (!tbody) {
-      console.error("[Panel Combustible] No existe resultBody");
+      console.error("[Panel Combustible] No existe resultBody.");
       return;
     }
 
@@ -376,16 +574,21 @@
       return;
     }
 
-    rows.forEach(function (rowData) {
-      var row = document.createElement("tr");
+    rows.sort(function (a, b) {
+      return new Date(b.raw.dateTime || 0).getTime() - new Date(a.raw.dateTime || 0).getTime();
+    });
 
-      appendCell(row, selectedDeviceName);
-      appendCell(row, rowData.dateTime ? new Date(rowData.dateTime).toLocaleString() : "");
-      appendCell(row, selectedDiagnosticName);
-      appendCell(row, rowData.data !== undefined && rowData.data !== null ? rowData.data : rowData.value);
-      appendCell(row, unit);
-      appendCell(row, selectedDevice ? selectedDevice.id : "");
-      appendCell(row, selectedDiagnostic ? selectedDiagnostic.id : "");
+    rows.forEach(function (item) {
+      var row = document.createElement("tr");
+      var raw = item.raw;
+
+      appendCell(row, getDeviceLabel(item.device));
+      appendCell(row, raw.dateTime ? new Date(raw.dateTime).toLocaleString() : "");
+      appendCell(row, item.diagnostic.name || item.diagnostic.id);
+      appendCell(row, raw.data !== undefined && raw.data !== null ? raw.data : raw.value);
+      appendCell(row, getDiagnosticUnitName(item.diagnostic));
+      appendCell(row, item.device.id);
+      appendCell(row, item.diagnostic.id);
       tbody.appendChild(row);
     });
   }
@@ -429,21 +632,23 @@
   }
 
   function clearForm() {
-    var deviceSelect = getElement("deviceSelect");
-    var diagnosticSelect = getElement("diagnosticSelect");
+    var vehicleSearchInput = getElement("vehicleSearchInput");
+    var diagnosticSearchInput = getElement("diagnosticSearchInput");
     var fromDate = getElement("fromDate");
     var toDate = getElement("toDate");
 
     clearError();
     setLoading(false);
     setQueryButtonDisabled(false);
+    selectedDeviceIds = [];
+    selectedDiagnosticIds = [];
 
-    if (deviceSelect) {
-      deviceSelect.value = "";
+    if (vehicleSearchInput) {
+      vehicleSearchInput.value = "";
     }
 
-    if (diagnosticSelect) {
-      diagnosticSelect.value = "";
+    if (diagnosticSearchInput) {
+      diagnosticSearchInput.value = "";
     }
 
     if (fromDate) {
@@ -455,6 +660,8 @@
     }
 
     setDefaultDates();
+    refreshVehicleUi();
+    refreshDiagnosticUi();
     setEmptyRows("Sin resultados para mostrar.");
     setStatusMessage("Filtros limpiados.");
   }
@@ -462,6 +669,8 @@
   function bindEvents() {
     var queryButton = getElement("queryButton");
     var clearButton = getElement("clearButton");
+    var vehicleSearchInput = getElement("vehicleSearchInput");
+    var diagnosticSearchInput = getElement("diagnosticSearchInput");
 
     if (eventsConfigured) {
       return;
@@ -473,6 +682,14 @@
 
     if (clearButton) {
       clearButton.addEventListener("click", clearForm);
+    }
+
+    if (vehicleSearchInput) {
+      vehicleSearchInput.addEventListener("input", renderVehicleOptions);
+    }
+
+    if (diagnosticSearchInput) {
+      diagnosticSearchInput.addEventListener("input", renderDiagnosticOptions);
     }
 
     eventsConfigured = true;
@@ -489,6 +706,8 @@
 
         bindEvents();
         setDefaultDates();
+        refreshVehicleUi();
+        refreshDiagnosticUi();
         ensureSdkAvailable();
 
         if (typeof callback === "function") {
@@ -529,6 +748,8 @@
   document.addEventListener("DOMContentLoaded", function () {
     bindEvents();
     setDefaultDates();
+    refreshVehicleUi();
+    refreshDiagnosticUi();
     ensureSdkAvailable();
   });
 }());

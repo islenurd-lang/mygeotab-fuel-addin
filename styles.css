@@ -89,12 +89,13 @@ h2 {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
   gap: 14px;
   padding: 18px;
 }
 
-.field {
+.field,
+.multi-select {
   display: grid;
   gap: 6px;
 }
@@ -105,13 +106,11 @@ label {
   font-weight: 700;
 }
 
-select,
 input,
 button {
   font: inherit;
 }
 
-select,
 input {
   min-height: 42px;
   width: 100%;
@@ -122,11 +121,83 @@ input {
   background: #ffffff;
 }
 
-select:focus,
 input:focus,
 button:focus {
   outline: 3px solid rgba(18, 100, 163, 0.24);
   outline-offset: 2px;
+}
+
+.multi-select {
+  align-content: start;
+}
+
+.multi-select-options {
+  max-height: 190px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.multi-select-option {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.multi-select-option:last-child {
+  border-bottom: 0;
+}
+
+.multi-select-option:hover,
+.multi-select-option.is-selected {
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.selected-tags-empty {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.selected-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 8px 5px 10px;
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+  font-size: 0.86rem;
+}
+
+.selected-tag button {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: var(--primary-dark);
+  background: #ffffff;
+  cursor: pointer;
 }
 
 .actions {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Panel de Combustible por Vehículo</title>
+  <title>Panel de Combustible por Vehiculo</title>
   <meta name="description" content="MyGeotab Add-In para consultar datos del motor relacionados con combustible.">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
     <header class="page-header">
       <div>
         <p class="eyebrow">MyGeotab Add-In</p>
-        <h1 id="pageTitle">Panel de Combustible por Vehículo</h1>
+        <h1 id="pageTitle">Panel de Combustible por Vehiculo</h1>
         <p class="subtitle">Consulta datos del motor relacionados con combustible usando MyGeotab SDK.</p>
       </div>
       <span class="status-pill" id="sdkStatus">Esperando MyGeotab</span>
@@ -20,18 +20,28 @@
 
     <section class="panel" aria-label="Filtros de consulta">
       <div class="form-grid">
-        <div class="field">
-          <label for="deviceSelect">Vehículo</label>
-          <select id="deviceSelect">
-            <option value="">Seleccione un vehículo</option>
-          </select>
+        <div class="multi-select" id="vehicleMultiSelect">
+          <label for="vehicleSearchInput">Vehiculos</label>
+          <input
+            id="vehicleSearchInput"
+            type="text"
+            placeholder="Buscar vehiculo por nombre, serie o ID..."
+            autocomplete="off"
+          >
+          <div id="vehicleOptions" class="multi-select-options"></div>
+          <div id="selectedVehicles" class="selected-tags"></div>
         </div>
 
-        <div class="field">
-          <label for="diagnosticSelect">Diagnóstico</label>
-          <select id="diagnosticSelect">
-            <option value="">Seleccione un diagnóstico</option>
-          </select>
+        <div class="multi-select" id="diagnosticMultiSelect">
+          <label for="diagnosticSearchInput">Diagnosticos de combustible</label>
+          <input
+            id="diagnosticSearchInput"
+            type="text"
+            placeholder="Buscar diagnostico por nombre, codigo o unidad..."
+            autocomplete="off"
+          >
+          <div id="diagnosticOptions" class="multi-select-options"></div>
+          <div id="selectedDiagnostics" class="selected-tags"></div>
         </div>
 
         <div class="field">
@@ -54,7 +64,7 @@
         <p id="loadingMessage" class="message message-loading" hidden>Consultando datos...</p>
         <p id="errorMessage" class="message message-error" role="alert" hidden></p>
         <p id="statusMessage" class="message message-info">Abre este Add-In dentro de MyGeotab para usar el SDK.</p>
-        <p id="infoMessage" class="message message-info">Abre este Add-In dentro de MyGeotab para usar el SDK.</p>
+        <p id="infoMessage" class="message message-info">Selecciona uno o varios vehiculos y diagnosticos para consultar.</p>
       </div>
     </section>
 
@@ -66,9 +76,9 @@
         <table>
           <thead>
             <tr>
-              <th>Vehículo</th>
+              <th>Vehiculo</th>
               <th>Fecha/Hora</th>
-              <th>Diagnóstico</th>
+              <th>Diagnostico</th>
               <th>Valor</th>
               <th>Unidad</th>
               <th>Device ID</th>
