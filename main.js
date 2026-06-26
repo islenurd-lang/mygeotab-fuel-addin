@@ -11,6 +11,7 @@
   let selectedDeviceIds = [];
   let selectedDiagnosticIds = [];
   let eventsConfigured = false;
+  let lastEmptyStatusDataDiagnostics = [];
 
   var ALLOWED_FUEL_DIAGNOSTIC_RULES = [
     {
@@ -628,6 +629,15 @@
       throw new Error("Debe seleccionar al menos un diagnostico.");
     }
 
+    console.group("[Panel Combustible] Consulta StatusData");
+    console.log("[Panel Combustible] Vehiculos seleccionados:", selectedDevices.map(function (device) {
+      return { id: device.id, name: getDeviceLabel(device) };
+    }));
+    console.log("[Panel Combustible] Diagnosticos seleccionados:", selectedDiagnostics.map(function (diagnostic) {
+      return { id: diagnostic.id, name: diagnostic.name || diagnostic.code || diagnostic.id };
+    }));
+    console.log("[Panel Combustible] Rango ISO:", range);
+
     for (deviceIndex = 0; deviceIndex < selectedDevices.length; deviceIndex += 1) {
       for (diagnosticIndex = 0; diagnosticIndex < selectedDiagnostics.length; diagnosticIndex += 1) {
         var device = selectedDevices[deviceIndex];
@@ -665,7 +675,150 @@
       }
     }
 
+    console.log("[Panel Combustible] Total combinado StatusData:", allRows.length);
+    console.groupEnd();
+
+    if (allRows.length === 0) {
+      lastEmptyStatusDataDiagnostics = await diagnoseEmptyStatusData(selectedDevices, selectedDiagnostics, range);
+    } else {
+      lastEmptyStatusDataDiagnostics = [];
+    }
+
     return allRows;
+  }
+
+  function createStatusDataParams(deviceId, diagnosticId, range, resultsLimit) {
+    var search = {};
+
+    if (deviceId) {
+      search.deviceSearch = {
+        id: deviceId
+      };
+    }
+
+    if (diagnosticId) {
+      search.diagnosticSearch = {
+        id: diagnosticId
+      };
+    }
+
+    if (range) {
+      search.fromDate = range.fromDate;
+      search.toDate = range.toDate;
+    }
+
+    return {
+      typeName: "StatusData",
+      search: search,
+      resultsLimit: resultsLimit || 1,
+      sort: {
+        sortBy: "dateTime",
+        sortDirection: "desc"
+      }
+    };
+  }
+
+  async function probeStatusData(label, params) {
+    var rows;
+
+    console.log("[Panel Combustible] Diagnostico StatusData - " + label + ":", params);
+
+    try {
+      rows = await apiCall("Get", params);
+      rows = Array.isArray(rows) ? rows : [];
+      console.log("[Panel Combustible] Diagnostico StatusData resultado - " + label + ":", rows.length, rows[0] || null);
+      return {
+        label: label,
+        count: rows.length,
+        first: rows[0] || null,
+        error: null
+      };
+    } catch (error) {
+      console.error("[Panel Combustible] Diagnostico StatusData error - " + label + ":", error);
+      return {
+        label: label,
+        count: 0,
+        first: null,
+        error: error
+      };
+    }
+  }
+
+  async function diagnoseEmptyStatusData(selectedDevices, selectedDiagnostics, range) {
+    var diagnostics = [];
+    var firstDevice = selectedDevices[0];
+    var firstDiagnostic = selectedDiagnostics[0];
+    var comboLimit = Math.min(selectedDevices.length * selectedDiagnostics.length, 5);
+    var checked = 0;
+    var deviceIndex;
+    var diagnosticIndex;
+
+    console.group("[Panel Combustible] Diagnostico por StatusData sin registros");
+    console.log("[Panel Combustible] No hubo datos en la consulta exacta. Ejecutando pruebas livianas resultsLimit=1.");
+
+    for (deviceIndex = 0; deviceIndex < selectedDevices.length && checked < comboLimit; deviceIndex += 1) {
+      for (diagnosticIndex = 0; diagnosticIndex < selectedDiagnostics.length && checked < comboLimit; diagnosticIndex += 1) {
+        var device = selectedDevices[deviceIndex];
+        var diagnostic = selectedDiagnostics[diagnosticIndex];
+        diagnostics.push(await probeStatusData(
+          "mismo vehiculo y diagnostico sin rango - " + getDeviceLabel(device) + " / " + (diagnostic.name || diagnostic.id),
+          createStatusDataParams(device.id, diagnostic.id, null, 1)
+        ));
+        checked += 1;
+      }
+    }
+
+    if (firstDiagnostic) {
+      diagnostics.push(await probeStatusData(
+        "diagnostico seleccionado en cualquier vehiculo dentro del rango",
+        createStatusDataParams(null, firstDiagnostic.id, range, 1)
+      ));
+    }
+
+    if (firstDevice) {
+      diagnostics.push(await probeStatusData(
+        "vehiculo seleccionado con cualquier StatusData dentro del rango",
+        createStatusDataParams(firstDevice.id, null, range, 1)
+      ));
+    }
+
+    console.table(diagnostics.map(function (item) {
+      return {
+        prueba: item.label,
+        registros: item.count,
+        fechaPrimerRegistro: item.first && item.first.dateTime ? item.first.dateTime : "",
+        error: item.error ? String(item.error.message || item.error) : ""
+      };
+    }));
+    console.groupEnd();
+
+    return diagnostics;
+  }
+
+  function getEmptyStatusDataMessage() {
+    var hasHistoricalComboData = lastEmptyStatusDataDiagnostics.some(function (item) {
+      return item.label.indexOf("mismo vehiculo y diagnostico sin rango") === 0 && item.count > 0;
+    });
+    var hasDiagnosticRangeData = lastEmptyStatusDataDiagnostics.some(function (item) {
+      return item.label === "diagnostico seleccionado en cualquier vehiculo dentro del rango" && item.count > 0;
+    });
+    var hasDeviceRangeData = lastEmptyStatusDataDiagnostics.some(function (item) {
+      return item.label === "vehiculo seleccionado con cualquier StatusData dentro del rango" && item.count > 0;
+    });
+
+    if (hasHistoricalComboData) {
+      return "No hay datos en el rango seleccionado, pero si existen datos historicos para alguna combinacion vehiculo/diagnostico. Prueba ampliar el rango de fechas.";
+    }
+
+    if (hasDiagnosticRangeData) {
+      return "El diagnostico tiene datos en el rango, pero no para los vehiculos seleccionados.";
+    }
+
+    if (hasDeviceRangeData) {
+      return "El vehiculo reporta StatusData en el rango, pero no para los diagnosticos de combustible seleccionados.";
+    }
+
+    return "No se encontraron datos para los filtros seleccionados. Revisa consola: se ejecutaron pruebas de diagnostico StatusData con resultsLimit=1.";
   }
 
   function appendCell(row, value) {
@@ -689,7 +842,7 @@
       var emptyCell = document.createElement("td");
       emptyCell.colSpan = 7;
       emptyCell.className = "empty-cell";
-      emptyCell.textContent = "No se encontraron datos para los filtros seleccionados.";
+      emptyCell.textContent = getEmptyStatusDataMessage();
       emptyRow.appendChild(emptyCell);
       tbody.appendChild(emptyRow);
       return;
@@ -723,7 +876,7 @@
     try {
       var rows = await queryFuelStatusData();
       renderRows(rows);
-      setStatusMessage("Registros encontrados: " + rows.length + ".");
+      setStatusMessage(rows.length > 0 ? "Registros encontrados: " + rows.length + "." : getEmptyStatusDataMessage());
     } catch (error) {
       console.error("[Panel Combustible] Error consultando StatusData:", error);
       showError(error.message || "No se pudieron consultar los datos de combustible.");

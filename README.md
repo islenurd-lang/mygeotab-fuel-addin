@@ -26,7 +26,7 @@ https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html
 El `configuration.json` usa la URL con versión:
 
 ```text
-https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html?v=1.0.5
+https://islenurd-lang.github.io/mygeotab-fuel-addin/index.html?v=1.0.6
 ```
 
 ## Activar GitHub Pages
@@ -70,3 +70,4 @@ Si abres `index.html` fuera de MyGeotab, la página no debe fallar. Mostrará un
 - Sin llamadas HTTP externas.
 - Usa el namespace `geotab.addin.panelCombustible`.
 - Implementa carga de vehículos, multiselección con búsqueda, carga de diagnósticos con lista blanca funcional de combustible y consulta combinada de `StatusData` mediante `api.call(...)`.
+- Cuando `StatusData` devuelve 0 registros, ejecuta pruebas livianas con `resultsLimit=1` para diferenciar entre falta de datos en el rango, diagnóstico sin datos para el vehículo o ausencia real de datos.
